@@ -39,4 +39,14 @@ export const config = {
   /** 每個連線在 rateWindowMs 內最多 rateMaxMessages 則訊息 */
   rateWindowMs: 10_000,
   rateMaxMessages: 15,
+  gm: {
+    /** GM_MOCK=1 時不呼叫 Claude，改用假的 GM（開發與測試用） */
+    mock: process.env.GM_MOCK === "1",
+    model: process.env.GM_MODEL ?? "claude-opus-5-5",
+    effort: (process.env.GM_EFFORT ?? "medium") as "low" | "medium" | "high" | "xhigh" | "max",
+    /** 單一回合的花費上限（美元，SDK 的估算值） */
+    maxBudgetPerRoundUsd: Number(process.env.GM_MAX_BUDGET_PER_ROUND_USD ?? 1),
+    /** 單一回合內 GM 最多的工具呼叫輪數 */
+    maxTurns: 20,
+  },
 };

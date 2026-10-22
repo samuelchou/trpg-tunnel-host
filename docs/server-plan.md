@@ -64,7 +64,12 @@ query({
 });
 ```
 
-保險：再加 `canUseTool`，檢查所有檔案路徑都在 `gm/` 底下，不在就拒絕。
+保險：再加一個 `PreToolUse` hook，檢查所有檔案路徑都在 `gm/` 底下，不在就拒絕。
+
+> **M2 實作時的修正**
+> - 原本打算用 `canUseTool`，但在 `dontAsk` 模式下它根本不會被呼叫，所以改用 `PreToolUse` hook（`server/src/gm.ts` 的 `guardTools`）。
+> - `allowedTools` 不放不帶路徑的 `Read`：不帶路徑的規則會放行任何路徑。在工作資料夾內讀檔本來就不需要授權，所以只放 `Edit(characters/**)`、`Edit(story/**)`（Edit 規則同時適用於 Write）。
+> - `gm/.claude/settings.json` 另外 deny 了 Bash、Web 工具、修改 `world.md`／`CLAUDE.md`，以及讀取 `saves/`。主持人自己在 `gm/` 開 `claude` 時也會套用這些規則。
 
 ## 4. 自訂工具（in-process MCP，`createSdkMcpServer` + `tool()`）
 
@@ -168,7 +173,7 @@ docs/cloudflare-tunnel.md
 | # | 內容 | 完成標準 |
 |---|---|---|
 | M1 ✅ | server + WebSocket + client 聊天、token 驗證 | 兩個瀏覽器分頁能互相看到 OOC 訊息，重連後有歷史紀錄 |
-| M2 | 接上 Agent SDK：回合結算 → GM 回應串流 | 送出行動後，所有人都看到 GM 敘事逐字出現；重啟伺服器後能接續同一個 session |
+| M2 ✅ | 接上 Agent SDK：回合結算 → GM 回應串流 | 送出行動後，所有人都看到 GM 敘事逐字出現；重啟伺服器後能接續同一個 session |
 | M3 | `roll_dice`、`send_private`、私密行動 | GM 擲骰時所有人看到結果；私密內容只有當事人看得到 |
 | M4 | host 面板：結算、GM 指示、暫停、中斷、花費顯示 | host 不開 CLI 也能控場 |
 | M5 | Cloudflare Tunnel 設定文件 | 朋友從外網用連結加入 |

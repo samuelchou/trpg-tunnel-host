@@ -4,6 +4,7 @@ import path from "node:path";
 import { WebSocketServer, type WebSocket } from "ws";
 import { authenticate } from "./auth.js";
 import { config } from "./config.js";
+import { createGm } from "./gm.js";
 import { ClientMessage } from "./protocol.js";
 import { Room } from "./room.js";
 import type { PlayerRecord } from "./store.js";
@@ -57,7 +58,7 @@ const server = http.createServer((req, res) => {
   serveStatic(req, res);
 });
 
-const room = new Room();
+const room = new Room(createGm());
 const wss = new WebSocketServer({ server, path: "/ws", maxPayload: 16 * 1024 });
 
 wss.on("connection", (ws: WebSocket) => {
@@ -114,7 +115,7 @@ wss.on("connection", (ws: WebSocket) => {
       ws.close(4001, "hello required");
       return;
     }
-    room.handle(player, parsed);
+    room.handle(player, ws, parsed);
   });
 
   ws.on("close", () => {

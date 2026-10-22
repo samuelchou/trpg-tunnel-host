@@ -8,9 +8,18 @@ const logEl = $("log");
 const playersEl = $("players");
 const inputEl = $("input");
 
+const PLACEHOLDER = {
+  action: "描述你的角色這回合要做什麼（Enter 送出，Shift+Enter 換行）",
+  chat: "跟大家閒聊，GM 看不到（Enter 送出，Shift+Enter 換行）",
+};
+
 let me = null;
 let ws = null;
 let retryDelay = 1000;
+let players = [];
+let round = { round: 1, submitted: [], gmRound: null };
+/** GM 正在串流的敘事區塊 */
+let streaming = null;
 
 // 邀請連結帶的 token 在 hash 裡（#t=...），讀出後存起來並從網址列移除
 function readToken() {
@@ -52,19 +61,44 @@ function connect(token) {
         me = msg.you;
         setStatus("online", `已連線：${me.name}${me.role === "host" ? "（主持人）" : ""}`);
         $("table").hidden = false;
+        $("resolve").hidden = me.role !== "host";
+        streaming = null;
         logEl.replaceChildren(...msg.events.map(renderEvent));
-        renderPlayers(msg.players);
+        if (msg.gmPartial !== null) appendGmDelta(msg.round.gmRound, msg.gmPartial);
+        players = msg.players;
+        round = msg.round;
+        renderPlayers();
+        renderRound();
+        renderMyAction(msg.yourAction);
         scrollToBottom();
         break;
       case "presence":
-        renderPlayers(msg.players);
+        players = msg.players;
+        renderPlayers();
+        renderRound();
         break;
-      case "event": {
-        const nearBottom = logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 80;
-        logEl.append(renderEvent(msg.event));
-        if (nearBottom || msg.event.from?.id === me?.id) scrollToBottom();
+      case "round_status":
+        round = msg.round;
+        renderPlayers();
+        renderRound();
         break;
-      }
+      case "your_action":
+        renderMyAction(msg.text);
+        break;
+      case "gm_delta":
+        withAutoScroll(() => appendGmDelta(msg.round, msg.text));
+        break;
+      case "event":
+        withAutoScroll(() => {
+          if (msg.event.kind === "gm" && streaming?.round === msg.event.round) {
+            // 串流結束，換成正式事件
+            streaming.el.replaceWith(renderEvent(msg.event));
+            streaming = null;
+          } else {
+            logEl.append(renderEvent(msg.event));
+          }
+        }, msg.event.from?.id === me?.id);
+        break;
       case "error":
         appendLocalNotice(msg.message);
         break;
@@ -87,59 +121,118 @@ function connect(token) {
   });
 }
 
-function renderEvent(event) {
-  const li = document.createElement("li");
-  li.className = `event event-${event.kind}`;
-  const time = document.createElement("time");
-  time.dateTime = event.ts;
-  time.textContent = new Date(event.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+function withAutoScroll(fn, force = false) {
+  const nearBottom = logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 80;
+  fn();
+  if (nearBottom || force) scrollToBottom();
+}
 
-  if (event.kind === "chat") {
-    const who = document.createElement("span");
-    who.className = "who";
-    who.textContent = event.from.name;
-    if (event.from.id === me?.id) li.classList.add("mine");
-    const text = document.createElement("p");
-    text.className = "text";
-    text.textContent = event.text;
-    li.append(who, time, text);
-  } else {
-    const text = document.createElement("span");
-    text.className = "text";
-    text.textContent = event.text;
-    li.append(text, time);
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function timeEl(ts) {
+  const time = el("time", "", new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+  time.dateTime = ts;
+  return time;
+}
+
+function renderEvent(event) {
+  const li = el("li", `event event-${event.kind}`);
+  switch (event.kind) {
+    case "chat":
+      if (event.from.id === me?.id) li.classList.add("mine");
+      li.append(el("span", "who", event.from.name), timeEl(event.ts), el("p", "text", event.text));
+      break;
+    case "action":
+      if (event.from.id === me?.id) li.classList.add("mine");
+      li.append(
+        el("span", "tag", `回合 ${event.round}`),
+        el("span", "who", event.from.name),
+        el("p", "text", event.text),
+      );
+      break;
+    case "gm":
+      li.append(el("span", "who", "GM"), timeEl(event.ts), el("p", "text", event.text));
+      break;
+    default:
+      li.append(el("span", "text", event.text), timeEl(event.ts));
   }
   return li;
 }
 
-function appendLocalNotice(message) {
-  logEl.append(renderEvent({ kind: "system", ts: new Date().toISOString(), text: message }));
-  scrollToBottom();
+function appendGmDelta(roundNo, text) {
+  if (!streaming || streaming.round !== roundNo) {
+    const li = el("li", "event event-gm streaming");
+    const body = el("p", "text", "");
+    li.append(el("span", "who", "GM"), body);
+    logEl.append(li);
+    streaming = { round: roundNo, el: li, body };
+  }
+  streaming.body.textContent += text;
 }
 
-function renderPlayers(players) {
+function appendLocalNotice(message) {
+  withAutoScroll(() => logEl.append(renderEvent({ kind: "system", ts: new Date().toISOString(), text: message })), true);
+}
+
+function renderPlayers() {
   const sorted = [...players].sort((a, b) => Number(b.online) - Number(a.online));
   playersEl.replaceChildren(
     ...sorted.map((p) => {
-      const li = document.createElement("li");
-      li.className = p.online ? "online" : "offline";
-      li.textContent = p.name + (p.role === "host" ? "（主持人）" : "");
+      const li = el("li", p.online ? "online" : "offline", p.name + (p.role === "host" ? "（主持人）" : ""));
+      if (round.submitted.includes(p.id)) li.append(el("span", "done", "已行動"));
       return li;
     }),
   );
+}
+
+function renderRound() {
+  const text = $("round-text");
+  if (round.gmRound !== null) {
+    text.textContent = `GM 正在描述回合 ${round.gmRound}…`;
+  } else {
+    const required = players.filter((p) => p.role === "player" && p.online);
+    const done = required.filter((p) => round.submitted.includes(p.id)).length;
+    text.textContent = `回合 ${round.round}：已行動 ${done}/${required.length}`;
+  }
+  $("resolve").disabled = round.gmRound !== null || round.submitted.length === 0;
+}
+
+function renderMyAction(text) {
+  $("my-action").hidden = text === null;
+  $("my-action-text").textContent = text ?? "";
 }
 
 function scrollToBottom() {
   logEl.scrollTop = logEl.scrollHeight;
 }
 
+function send(msg) {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+}
+
+function currentMode() {
+  return document.querySelector('input[name="mode"]:checked').value;
+}
+
 $("composer").addEventListener("submit", (e) => {
   e.preventDefault();
   const text = inputEl.value.trim();
   if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
-  ws.send(JSON.stringify({ type: "chat", text }));
+  send({ type: currentMode(), text });
   inputEl.value = "";
 });
+
+for (const radio of document.querySelectorAll('input[name="mode"]')) {
+  radio.addEventListener("change", () => {
+    inputEl.placeholder = PLACEHOLDER[currentMode()];
+    inputEl.focus();
+  });
+}
 
 inputEl.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
@@ -147,6 +240,9 @@ inputEl.addEventListener("keydown", (e) => {
     $("composer").requestSubmit();
   }
 });
+
+$("withdraw").addEventListener("click", () => send({ type: "withdraw" }));
+$("resolve").addEventListener("click", () => send({ type: "resolve_round" }));
 
 const token = readToken();
 if (token) {

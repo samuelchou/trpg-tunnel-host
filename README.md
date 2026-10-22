@@ -18,17 +18,17 @@
 ## 目前進度
 
 - [x] M1：伺服器、WebSocket、聊天、邀請 token 驗證、斷線重連後補歷史
-- [ ] M2：接上 Agent SDK，回合結算 → GM 回應串流
+- [x] M2：接上 Agent SDK，回合結算 → GM 回應串流
 - [ ] M3：擲骰、私密行動
 - [ ] M4：host 控場面板
 - [ ] M5：Cloudflare Tunnel 設定
 
 ## 快速開始
 
-需要 Node.js 18.18 以上（接上 Agent SDK 後建議 22 LTS）。
+需要 Node.js 22 LTS。
 
 ```bash
-cp .env.example .env
+cp .env.example .env              # 填入 ANTHROPIC_API_KEY
 cd server
 npm install
 npm run invite -- 主持人 --host   # 印出主持人的邀請連結
@@ -38,14 +38,45 @@ npm run dev                       # 啟動伺服器（修改程式會自動重�
 
 打開邀請連結就能加入。連結裡的 token 只會顯示一次；同一個名字再執行一次 `invite` 會換發新 token，舊連結會立即失效。
 
-玩家名單和聊天紀錄存在 `gm/saves/`（不進 git）。
+想先試介面、不花 token 的話，用模擬 GM 啟動：
+
+```bash
+GM_MOCK=1 npm run dev
+```
+
+## 怎麼玩
+
+- **角色行動**：描述角色這回合要做什麼。送出後可以撤回或重送（以最後一次為準）。
+- **閒聊**：玩家之間聊天，GM 看不到。
+- 所有在線玩家都送出行動後，回合會自動結算；主持人也可以按「立即結算」，不等還沒行動的人。
+- GM 回應時，大家可以先送出下一回合的行動。
+
+## 主持人設定 GM
+
+在 `gm/` 底下設定（見 [gm/README.md](gm/README.md)）：
+
+- `CLAUDE.md`：GM 的人設、語氣、規則
+- `world.md`：世界觀
+- `characters/<玩家名字>.md`：角色卡（範本在 `characters/_template.md`）
+
+整場團接續同一個 Claude Code session，session ID 存在 `gm/saves/state.json`。想先在 `gm/` 用 `claude` 跟 GM 討論設定（Session 0），再讓伺服器接手：
+
+```bash
+npm run adopt-session -- <session ID>   # 在伺服器停止時執行
+npm run adopt-session                   # 查看目前的 session
+npm run adopt-session -- --new          # 清除，下一回合開新 session
+```
+
+開團中不要同時用 `claude --resume` 操作同一個 session，兩邊同時寫入會衝突。
+
+玩家名單、遊戲紀錄、存檔都在 `gm/saves/`（不進 git）。
 
 ## 目錄
 
 | 路徑 | 用途 |
 |---|---|
 | `gm/` | host 放 GM 設定的地方：系統提示詞、世界觀、角色卡、劇情摘要 |
-| `server/` | host 伺服器（Node + TypeScript + `ws`） |
+| `server/` | host 伺服器（Node + TypeScript + `ws` + Claude Agent SDK） |
 | `client/` | HTML client，由伺服器直接提供 |
 
 ## 待決定

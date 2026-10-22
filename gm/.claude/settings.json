@@ -1,0 +1,6 @@
+{
+  "permissions": {
+    "allow": ["Edit(characters/**)", "Edit(story/**)"],
+    "deny": ["Bash", "WebFetch", "WebSearch", "Edit(world.md)", "Edit(CLAUDE.md)", "Edit(.claude/**)", "Read(saves/**)"]
+  }
+}

@@ -14,11 +14,37 @@ export interface PlayerRecord {
   createdAt: string;
 }
 
+export interface GameState {
+  /** 接續中的 Claude Code session；沒有的話下一回合會建立新的 */
+  sessionId?: string;
+  /** 下一個要結算的回合編號 */
+  round: number;
+  totalCostUsd: number;
+}
+
 const playersFile = path.join(config.savesDir, "players.json");
 const logFile = path.join(config.savesDir, "log.jsonl");
+const stateFile = path.join(config.savesDir, "state.json");
 
 function ensureSavesDir() {
   fs.mkdirSync(config.savesDir, { recursive: true });
+}
+
+function writeJsonAtomic(file: string, data: unknown) {
+  ensureSavesDir();
+  // 先寫暫存檔再改名，避免寫到一半當掉留下壞檔
+  const tmp = `${file}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
+  fs.renameSync(tmp, file);
+}
+
+export function loadState(): GameState {
+  if (!fs.existsSync(stateFile)) return { round: 1, totalCostUsd: 0 };
+  return { round: 1, totalCostUsd: 0, ...JSON.parse(fs.readFileSync(stateFile, "utf8")) };
+}
+
+export function saveState(state: GameState) {
+  writeJsonAtomic(stateFile, state);
 }
 
 export function loadPlayers(): PlayerRecord[] {
@@ -27,11 +53,7 @@ export function loadPlayers(): PlayerRecord[] {
 }
 
 export function savePlayers(players: PlayerRecord[]) {
-  ensureSavesDir();
-  // 先寫暫存檔再改名，避免寫到一半當掉留下壞檔
-  const tmp = `${playersFile}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify({ players }, null, 2));
-  fs.renameSync(tmp, playersFile);
+  writeJsonAtomic(playersFile, { players });
 }
 
 export function appendEvent(event: GameEvent) {

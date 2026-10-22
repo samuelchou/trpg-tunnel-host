@@ -20,15 +20,30 @@
     <main id="table" class="table" hidden>
       <section class="log-panel">
         <ol id="log" class="log" aria-live="polite"></ol>
+        <div class="round-bar">
+          <span id="round-text">回合 1</span>
+          <button id="resolve" type="button" class="ghost" hidden>立即結算</button>
+        </div>
+        <div id="my-action" class="my-action" hidden>
+          <span class="label">你本回合的行動</span>
+          <p id="my-action-text"></p>
+          <button id="withdraw" type="button" class="ghost">撤回</button>
+        </div>
         <form id="composer" class="composer">
-          <textarea
-            id="input"
-            rows="2"
-            maxlength="2000"
-            placeholder="輸入訊息，Enter 送出，Shift+Enter 換行"
-            aria-label="訊息"
-          ></textarea>
-          <button type="submit">送出</button>
+          <div class="mode" role="radiogroup" aria-label="發言類型">
+            <label><input type="radio" name="mode" value="action" checked /> 角色行動</label>
+            <label><input type="radio" name="mode" value="chat" /> 閒聊</label>
+          </div>
+          <div class="compose-row">
+            <textarea
+              id="input"
+              rows="2"
+              maxlength="2000"
+              placeholder="描述你的角色這回合要做什麼（Enter 送出，Shift+Enter 換行）"
+              aria-label="訊息"
+            ></textarea>
+            <button type="submit">送出</button>
+          </div>
         </form>
       </section>
       <aside class="side-panel">
