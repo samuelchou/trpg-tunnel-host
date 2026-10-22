@@ -159,7 +159,7 @@ export class Room {
         const partial = err instanceof GmError ? err.partial : undefined;
         this.updateCost(partial?.sessionCostUsd);
         console.error(`[gm] 回合 ${round} 失敗：`, err);
-        if (partial?.text.trim()) this.record({ kind: "gm", round, text: partial.text.trim() });
+        // 失敗回合的半段敘事不寫進紀錄（client 會把已串流的部分標成中斷）
         this.record({
           kind: "system",
           text: `GM 回應失敗（${err instanceof Error ? err.message : String(err)}）。行動已退回，修改行動或由主持人重新結算即可重試。`,

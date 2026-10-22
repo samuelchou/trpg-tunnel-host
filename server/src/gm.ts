@@ -131,10 +131,11 @@ export class AgentGm implements Gm {
           }
         } else if (message.type === "result") {
           sessionCostUsd = message.total_cost_usd;
-          if (message.subtype === "success") {
+          // 像「沒有登入」這類錯誤，subtype 仍是 success，只有 is_error 為 true
+          if (message.subtype === "success" && !message.is_error) {
             if (!text.trim()) text = message.result;
           } else {
-            failure = message.subtype;
+            failure = message.subtype === "success" ? message.result : message.subtype;
           }
         }
       }

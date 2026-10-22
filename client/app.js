@@ -79,6 +79,11 @@ function connect(token) {
         break;
       case "round_status":
         round = msg.round;
+        if (round.gmRound === null && streaming) {
+          // GM 沒有送出正式敘事就結束了（失敗或中斷）
+          streaming.el.classList.replace("streaming", "interrupted");
+          streaming = null;
+        }
         renderPlayers();
         renderRound();
         break;

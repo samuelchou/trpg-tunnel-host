@@ -221,6 +221,18 @@ body {
   animation: blink 1s steps(2) infinite;
 }
 
+.event-gm.interrupted {
+  border-style: dashed;
+  opacity: 0.6;
+}
+
+.event-gm.interrupted .text::after {
+  content: "（中斷）";
+  margin-left: 4px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
 @keyframes blink {
   50% {
     opacity: 0;
