@@ -2,7 +2,7 @@
 
 多人 TRPG 的 AI GM 主機（方案一）：host 在自己的電腦上執行伺服器，透過 Cloudflare Tunnel 對外開放，玩家用瀏覽器連線同步遊玩。Claude 的憑證只存在 host 端，玩家不需共用任何帳號。
 
-完整設計背景見 [docs/design-notes.md](docs/design-notes.md)。
+完整設計背景見 [docs/design-notes.md](docs/design-notes.md)，server 規劃見 [docs/server-plan.md](docs/server-plan.md)。
 
 ## 架構
 
@@ -25,6 +25,6 @@
 
 ## 待決定
 
-- GM 後端：直接呼叫 Claude API，或用 Agent SDK 接續 host 的 Claude Code session
+- ~~GM 後端~~：已決定用 Agent SDK 接續 host 的 Claude Code session
 - 玩家驗證方式：房間碼 + 個人 token，或 Cloudflare Access
 - 規則系統與玩家人數

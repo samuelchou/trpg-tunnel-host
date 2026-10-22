@@ -86,7 +86,7 @@ Client 不必做成執行檔：由 host 伺服器直接提供 HTML，玩家用�
 
 ## 7. 待決定事項
 
-- [ ] 方案一 GM 後端：直接呼叫 Claude API，還是 Agent SDK `--resume` 接續 host 的 Claude Code session？
+- [x] 方案一 GM 後端：**採用 Agent SDK 接續 host 的 Claude Code session**（2026-10-22 決定，規劃見 [server-plan.md](server-plan.md)）
   - 若用 Claude Code session：host 互動式操作與伺服器同時寫入同一個 session 會衝突，需規劃（例如 host 只在暫停時介入，或透過伺服器的 host 指令發言）
   - 必須關閉 Bash、網路等工具，只允許讀寫 GM 資料夾
 - [ ] 憑證：用 Console API key（按量計費、可設上限），避免把個人 Pro/Max 訂閱開給多人使用
