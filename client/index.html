@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TRPG 共享桌</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>TRPG 共享桌</h1>
+      <span id="status" class="status" data-state="connecting">連線中…</span>
+    </header>
+
+    <section id="no-token" class="notice" hidden>
+      <h2>需要邀請連結</h2>
+      <p>請使用主持人給你的邀請連結開啟這個頁面。</p>
+    </section>
+
+    <main id="table" class="table" hidden>
+      <section class="log-panel">
+        <ol id="log" class="log" aria-live="polite"></ol>
+        <form id="composer" class="composer">
+          <textarea
+            id="input"
+            rows="2"
+            maxlength="2000"
+            placeholder="輸入訊息，Enter 送出，Shift+Enter 換行"
+            aria-label="訊息"
+          ></textarea>
+          <button type="submit">送出</button>
+        </form>
+      </section>
+      <aside class="side-panel">
+        <h2>成員</h2>
+        <ul id="players" class="players"></ul>
+      </aside>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>

@@ -167,7 +167,7 @@ docs/cloudflare-tunnel.md
 
 | # | 內容 | 完成標準 |
 |---|---|---|
-| M1 | server + WebSocket + client 聊天、token 驗證 | 兩個瀏覽器分頁能互相看到 OOC 訊息，重連後有歷史紀錄 |
+| M1 ✅ | server + WebSocket + client 聊天、token 驗證 | 兩個瀏覽器分頁能互相看到 OOC 訊息，重連後有歷史紀錄 |
 | M2 | 接上 Agent SDK：回合結算 → GM 回應串流 | 送出行動後，所有人都看到 GM 敘事逐字出現；重啟伺服器後能接續同一個 session |
 | M3 | `roll_dice`、`send_private`、私密行動 | GM 擲骰時所有人看到結果；私密內容只有當事人看得到 |
 | M4 | host 面板：結算、GM 指示、暫停、中斷、花費顯示 | host 不開 CLI 也能控場 |

@@ -15,16 +15,41 @@
                                                       └─ gm/  ← host 自訂的背景、提示詞、狀態
 ```
 
+## 目前進度
+
+- [x] M1：伺服器、WebSocket、聊天、邀請 token 驗證、斷線重連後補歷史
+- [ ] M2：接上 Agent SDK，回合結算 → GM 回應串流
+- [ ] M3：擲骰、私密行動
+- [ ] M4：host 控場面板
+- [ ] M5：Cloudflare Tunnel 設定
+
+## 快速開始
+
+需要 Node.js 18.18 以上（接上 Agent SDK 後建議 22 LTS）。
+
+```bash
+cp .env.example .env
+cd server
+npm install
+npm run invite -- 主持人 --host   # 印出主持人的邀請連結
+npm run invite -- 阿明            # 每位玩家各產生一條
+npm run dev                       # 啟動伺服器（修改程式會自動重啟）
+```
+
+打開邀請連結就能加入。連結裡的 token 只會顯示一次；同一個名字再執行一次 `invite` 會換發新 token，舊連結會立即失效。
+
+玩家名單和聊天紀錄存在 `gm/saves/`（不進 git）。
+
 ## 目錄
 
 | 路徑 | 用途 |
 |---|---|
 | `gm/` | host 放 GM 設定的地方：系統提示詞、世界觀、角色卡、劇情摘要 |
-| `server/` | （待建）host 伺服器 |
-| `client/` | （待建）HTML client，由伺服器直接提供 |
+| `server/` | host 伺服器（Node + TypeScript + `ws`） |
+| `client/` | HTML client，由伺服器直接提供 |
 
 ## 待決定
 
 - ~~GM 後端~~：已決定用 Agent SDK 接續 host 的 Claude Code session
-- 玩家驗證方式：房間碼 + 個人 token，或 Cloudflare Access
+- ~~玩家驗證方式~~：個人邀請 token（之後可在 Cloudflare 前面加 Access 作為第二層）
 - 規則系統與玩家人數
