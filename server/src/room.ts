@@ -6,6 +6,7 @@ import type { ToolSink } from "./tools.js";
 import type {
   ClientMessage,
   GameEvent,
+  HostStatus,
   PlayerPresence,
   PlayerRef,
   RoundStatus,
@@ -45,6 +46,8 @@ export class Room {
   private gmAbort?: AbortController;
   /** GM 失敗後先別自動重試，等有人改動行動或 host 手動結算 */
   private autoResolveBlocked = false;
+  /** 上一次失敗或被中斷的回合；重試時要提醒 GM 以新訊息為準 */
+  private interruptedRound: number | null = null;
 
   constructor(private gm: Gm) {}
 
@@ -64,6 +67,7 @@ export class Room {
       yourAction: this.myAction(player.id),
       gmPartial: this.gmRound !== null ? this.gmPartial : null,
     });
+    if (player.role === "host") this.send(ws, { type: "host_status", status: this.hostStatus() });
     if (firstConnection) this.broadcast({ type: "presence", players: this.presence() });
   }
 
@@ -102,24 +106,73 @@ export class Room {
         this.broadcastRound();
         break;
 
-      case "resolve_round":
+      default:
         if (player.role !== "host") {
-          return this.send(ws, { type: "error", code: "forbidden", message: "只有主持人可以結算回合" });
+          return this.send(ws, { type: "error", code: "forbidden", message: "只有主持人可以這樣做" });
         }
-        if (this.gmRound !== null) {
-          return this.send(ws, { type: "error", code: "gm_busy", message: "GM 還在回應上一回合" });
-        }
-        if (this.pending.size === 0) {
-          return this.send(ws, { type: "error", code: "no_actions", message: "還沒有人送出行動" });
+        this.handleHost(ws, msg);
+    }
+  }
+
+  private handleHost(
+    ws: WebSocket,
+    msg: Extract<ClientMessage, { type: "resolve_round" | "gm_note" | "clear_notes" | "pause" | "unpause" | "abort" }>,
+  ) {
+    const error = (code: string, message: string) => this.send(ws, { type: "error", code, message });
+    switch (msg.type) {
+      case "resolve_round":
+        if (this.gmRound !== null) return error("gm_busy", "GM 還在回應上一回合");
+        if (this.state.paused) return error("paused", "目前是暫停狀態，請先按「繼續」");
+        if (this.pending.size === 0 && this.notes().length === 0) {
+          return error("no_actions", "還沒有人送出行動，也沒有主持人指示");
         }
         this.resolve();
+        break;
+
+      case "gm_note":
+        this.state.hostNotes = [...this.notes(), msg.text];
+        saveState(this.state);
+        this.record({ kind: "host_note", text: msg.text, visibleTo: [] });
+        this.broadcastHostStatus();
+        break;
+
+      case "clear_notes":
+        if (this.notes().length === 0) return;
+        this.state.hostNotes = [];
+        saveState(this.state);
+        this.record({ kind: "system", text: "主持人清除了尚未送出的指示", visibleTo: [] });
+        this.broadcastHostStatus();
+        break;
+
+      case "pause":
+      case "unpause": {
+        const paused = msg.type === "pause";
+        if (!!this.state.paused === paused) return;
+        this.state.paused = paused;
+        saveState(this.state);
+        this.record({
+          kind: "system",
+          text: paused ? "主持人暫停了遊戲，回合暫時不會結算" : "主持人恢復了遊戲",
+        });
+        this.broadcastRound();
+        this.broadcastHostStatus();
+        if (!paused) {
+          this.autoResolveBlocked = false;
+          this.maybeAutoResolve();
+        }
+        break;
+      }
+
+      case "abort":
+        if (!this.gmAbort) return error("gm_idle", "GM 目前沒有在回應");
+        this.gmAbort.abort();
         break;
     }
   }
 
   /** 所有在線玩家（不含主持人）都送出行動時自動結算 */
   private maybeAutoResolve() {
-    if (this.gmRound !== null || this.autoResolveBlocked || this.pending.size === 0) return;
+    if (this.gmRound !== null || this.state.paused || this.autoResolveBlocked || this.pending.size === 0) return;
     const required = loadPlayers().filter((p) => p.role === "player" && this.connections.has(p.id));
     if (required.length > 0 && required.every((p) => this.pending.has(p.id))) this.resolve();
   }
@@ -127,7 +180,9 @@ export class Room {
   private resolve() {
     const round = this.state.round;
     const actions = [...this.pending.values()];
+    const notes = this.notes();
     this.pending.clear();
+    this.state.hostNotes = [];
     for (const a of actions) {
       this.sendTo(a.from.id, { type: "your_action", action: null });
       this.record({
@@ -143,12 +198,18 @@ export class Room {
     saveState(this.state);
     this.gmRound = round;
     this.gmPartial = "";
-    this.gmAbort = new AbortController();
+    const abort = (this.gmAbort = new AbortController());
     this.broadcastRound();
+    this.broadcastHostStatus();
 
+    const retrying = this.interruptedRound === round;
+    this.interruptedRound = null;
     const prompt = [
+      ...(retrying ? ["（上一則同回合訊息的回應被中斷了，請忽略它，以這則為準重新回應。）"] : []),
       `【回合 ${round}】`,
       ...actions.map((a) => `- ${a.private ? "【私密】" : ""}${a.from.name}：${a.text}`),
+      ...(actions.length === 0 ? ["（這回合沒有玩家行動）"] : []),
+      ...notes.map((n) => `【主持人指示】${n}`),
     ].join("\n");
 
     this.gm
@@ -166,7 +227,7 @@ export class Room {
           },
           tools: this.toolSink(round),
         },
-        this.gmAbort,
+        abort,
       )
       .then((result) => {
         this.updateCost(result.sessionCostUsd);
@@ -175,12 +236,19 @@ export class Room {
       .catch((err: unknown) => {
         const partial = err instanceof GmError ? err.partial : undefined;
         this.updateCost(partial?.sessionCostUsd);
-        console.error(`[gm] 回合 ${round} 失敗：`, err);
         // 失敗回合的半段敘事不寫進紀錄（client 會把已串流的部分標成中斷）
-        this.record({
-          kind: "system",
-          text: `GM 回應失敗（${err instanceof Error ? err.message : String(err)}）。行動已退回，修改行動或由主持人重新結算即可重試。`,
-        });
+        if (abort.signal.aborted) {
+          this.record({
+            kind: "system",
+            text: `主持人中斷了回合 ${round} 的 GM 回應。行動已退回，修改行動或由主持人重新結算即可重來。`,
+          });
+        } else {
+          console.error(`[gm] 回合 ${round} 失敗：`, err);
+          this.record({
+            kind: "system",
+            text: `GM 回應失敗（${err instanceof Error ? err.message : String(err)}）。行動已退回，修改行動或由主持人重新結算即可重試。`,
+          });
+        }
         // 退回行動；失敗的回合編號讓下一次重試沿用
         for (const a of actions) {
           if (!this.pending.has(a.from.id)) {
@@ -188,15 +256,19 @@ export class Room {
             this.sendTo(a.from.id, { type: "your_action", action: this.myAction(a.from.id) });
           }
         }
+        // 主持人指示也退回，排在回應期間新加的指示前面
+        this.state.hostNotes = [...notes, ...this.notes()];
         this.state.round = round;
         saveState(this.state);
         this.autoResolveBlocked = true;
+        this.interruptedRound = round;
       })
       .finally(() => {
         this.gmRound = null;
         this.gmPartial = "";
         this.gmAbort = undefined;
         this.broadcastRound();
+        this.broadcastHostStatus();
         // GM 回應期間大家送出的行動，可能已經湊齊下一回合
         this.maybeAutoResolve();
       });
@@ -234,6 +306,26 @@ export class Room {
     };
   }
 
+  private notes() {
+    return this.state.hostNotes ?? [];
+  }
+
+  private hostStatus(): HostStatus {
+    return {
+      notes: this.notes(),
+      totalCostUsd: this.state.totalCostUsd,
+      sessionId: this.state.sessionId ?? null,
+      model: config.gm.model,
+      effort: config.gm.effort,
+      mock: config.gm.mock,
+    };
+  }
+
+  private broadcastHostStatus() {
+    const msg: ServerMessage = { type: "host_status", status: this.hostStatus() };
+    for (const [playerId, role] of this.roles) if (role === "host") this.sendTo(playerId, msg);
+  }
+
   private myAction(playerId: string) {
     const a = this.pending.get(playerId);
     return a ? { text: a.text, private: a.private } : null;
@@ -248,6 +340,7 @@ export class Room {
     if (sessionCostUsd === undefined) return;
     this.state.totalCostUsd = Math.max(this.state.totalCostUsd, sessionCostUsd);
     saveState(this.state);
+    this.broadcastHostStatus();
   }
 
   private record(body: DistributiveOmit<GameEvent, "id" | "ts">) {
@@ -263,7 +356,12 @@ export class Room {
   }
 
   private roundStatus(): RoundStatus {
-    return { round: this.state.round, submitted: [...this.pending.keys()], gmRound: this.gmRound };
+    return {
+      round: this.state.round,
+      submitted: [...this.pending.keys()],
+      gmRound: this.gmRound,
+      paused: !!this.state.paused,
+    };
   }
 
   private broadcastRound() {

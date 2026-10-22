@@ -42,6 +42,8 @@ export const config = {
   gm: {
     /** GM_MOCK=1 時不呼叫 Claude，改用假的 GM（開發與測試用） */
     mock: process.env.GM_MOCK === "1",
+    /** 模擬 GM 每個字的間隔（毫秒），測試中斷時可以調慢 */
+    mockDelayMs: Number(process.env.GM_MOCK_DELAY_MS ?? 5),
     model: process.env.GM_MODEL ?? "claude-opus-5-5",
     effort: (process.env.GM_EFFORT ?? "medium") as "low" | "medium" | "high" | "xhigh" | "max",
     /** 單一回合的花費上限（美元，SDK 的估算值） */

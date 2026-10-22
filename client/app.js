@@ -18,7 +18,8 @@ let me = null;
 let ws = null;
 let retryDelay = 1000;
 let players = [];
-let round = { round: 1, submitted: [], gmRound: null };
+let round = { round: 1, submitted: [], gmRound: null, paused: false };
+let hostStatus = null;
 /** GM 正在串流的敘事區塊 */
 let streaming = null;
 
@@ -63,6 +64,7 @@ function connect(token) {
         setStatus("online", `已連線：${me.name}${me.role === "host" ? "（主持人）" : ""}`);
         $("table").hidden = false;
         $("resolve").hidden = me.role !== "host";
+        $("host-panel").hidden = me.role !== "host";
         streaming = null;
         logEl.replaceChildren(...msg.events.map(renderEvent));
         if (msg.gmPartial !== null) appendGmDelta(msg.round.gmRound, msg.gmPartial);
@@ -86,6 +88,11 @@ function connect(token) {
           streaming = null;
         }
         renderPlayers();
+        renderRound();
+        break;
+      case "host_status":
+        hostStatus = msg.status;
+        renderHostPanel();
         renderRound();
         break;
       case "your_action":
@@ -180,6 +187,9 @@ function renderEvent(event) {
       if (event.to) li.append(el("span", "tag tag-private", event.to.id === me?.id ? "只有你看得到" : `私密：${event.to.name}`));
       break;
     }
+    case "host_note":
+      li.append(el("span", "who", "主持人指示（只有你和 GM 看得到）"), timeEl(event.ts), el("p", "text", event.text));
+      break;
     case "private":
       li.append(
         el("span", "who", event.to.id === me?.id ? "GM 私下告訴你" : `GM 私下告訴 ${event.to.name}`),
@@ -229,9 +239,25 @@ function renderRound() {
   } else {
     const required = players.filter((p) => p.role === "player" && p.online);
     const done = required.filter((p) => round.submitted.includes(p.id)).length;
-    text.textContent = `回合 ${round.round}：已行動 ${done}/${required.length}`;
+    text.textContent = `${round.paused ? "⏸ 已暫停・" : ""}回合 ${round.round}：已行動 ${done}/${required.length}`;
   }
-  $("resolve").disabled = round.gmRound !== null || round.submitted.length === 0;
+  const hasNotes = (hostStatus?.notes.length ?? 0) > 0;
+  $("resolve").disabled =
+    round.gmRound !== null || round.paused || (round.submitted.length === 0 && !hasNotes);
+  $("pause").textContent = round.paused ? "繼續" : "暫停";
+  $("abort").disabled = round.gmRound === null;
+}
+
+function renderHostPanel() {
+  if (!hostStatus) return;
+  $("host-model").textContent = hostStatus.mock
+    ? "模擬 GM（不呼叫 Claude）"
+    : `${hostStatus.model}・${hostStatus.effort}`;
+  $("host-cost").textContent = `約 US$${hostStatus.totalCostUsd.toFixed(2)}（SDK 估算）`;
+  $("host-session").textContent = hostStatus.sessionId ? hostStatus.sessionId.slice(0, 8) + "…" : "尚未建立";
+  $("host-session").title = hostStatus.sessionId ?? "";
+  $("notes-box").hidden = hostStatus.notes.length === 0;
+  $("notes").replaceChildren(...hostStatus.notes.map((n) => el("li", "", n)));
 }
 
 function renderMyAction(action) {
@@ -277,6 +303,18 @@ inputEl.addEventListener("keydown", (e) => {
 });
 
 $("withdraw").addEventListener("click", () => send({ type: "withdraw" }));
+$("pause").addEventListener("click", () => send({ type: round.paused ? "unpause" : "pause" }));
+$("abort").addEventListener("click", () => {
+  if (confirm("中斷 GM 這回合的回應？玩家的行動會退回，可以重新結算。")) send({ type: "abort" });
+});
+$("clear-notes").addEventListener("click", () => send({ type: "clear_notes" }));
+$("note-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const text = $("note-input").value.trim();
+  if (!text) return;
+  send({ type: "gm_note", text });
+  $("note-input").value = "";
+});
 $("resolve").addEventListener("click", () => send({ type: "resolve_round" }));
 
 // 在已開啟的分頁貼上另一條邀請連結時，只有 hash 會變，頁面不會重新載入

@@ -20,6 +20,9 @@ export interface GameState {
   /** 下一個要結算的回合編號 */
   round: number;
   totalCostUsd: number;
+  paused?: boolean;
+  /** 等著併入下一回合的主持人指示 */
+  hostNotes?: string[];
 }
 
 const playersFile = path.join(config.savesDir, "players.json");

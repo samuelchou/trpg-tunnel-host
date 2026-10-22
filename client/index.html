@@ -50,6 +50,39 @@
       <aside class="side-panel">
         <h2>成員</h2>
         <ul id="players" class="players"></ul>
+
+        <details id="host-panel" class="host-panel" open hidden>
+          <summary>主持人控場</summary>
+          <dl class="host-stats">
+            <dt>GM</dt>
+            <dd id="host-model">—</dd>
+            <dt>累計花費</dt>
+            <dd id="host-cost">—</dd>
+            <dt>Session</dt>
+            <dd id="host-session">—</dd>
+          </dl>
+          <div class="host-buttons">
+            <button id="pause" type="button" class="ghost">暫停</button>
+            <button id="abort" type="button" class="ghost danger">中斷 GM</button>
+          </div>
+          <form id="note-form" class="note-form">
+            <label for="note-input">給 GM 的指示</label>
+            <textarea
+              id="note-input"
+              rows="3"
+              maxlength="2000"
+              placeholder="只有 GM 和你看得到，會併入下一回合"
+            ></textarea>
+            <button type="submit" class="ghost">加入指示</button>
+          </form>
+          <div id="notes-box" class="notes-box" hidden>
+            <div class="notes-head">
+              <span>待送出的指示</span>
+              <button id="clear-notes" type="button" class="ghost">清除</button>
+            </div>
+            <ol id="notes"></ol>
+          </div>
+        </details>
       </aside>
     </main>
 

@@ -13,8 +13,17 @@ export const ClientMessage = z.discriminatedUnion("type", [
   /** 本回合的角色行動；再送一次會覆蓋。private 為 true 時只有 GM（與主持人）看得到 */
   z.object({ type: z.literal("action"), text, private: z.boolean().optional() }),
   z.object({ type: z.literal("withdraw") }),
-  /** host 限定：不等其他人，立即結算 */
+  // ---- 以下為 host 限定 ----
+  /** 不等其他人，立即結算（沒有人行動也可以，只要有主持人指示） */
   z.object({ type: z.literal("resolve_round") }),
+  /** 主持人指示：只有 GM 和主持人看得到，併入下一回合 */
+  z.object({ type: z.literal("gm_note"), text }),
+  z.object({ type: z.literal("clear_notes") }),
+  /** 暫停後不會結算回合（玩家仍可送出行動） */
+  z.object({ type: z.literal("pause") }),
+  z.object({ type: z.literal("unpause") }),
+  /** 中斷正在進行的 GM 回應，行動會退回 */
+  z.object({ type: z.literal("abort") }),
 ]);
 export type ClientMessage = z.infer<typeof ClientMessage>;
 
@@ -55,6 +64,7 @@ export type GameEvent = EventMeta &
         to?: PlayerRef;
       }
     | { kind: "private"; round: number; to: PlayerRef; text: string }
+    | { kind: "host_note"; text: string }
   );
 
 export interface MyAction {
@@ -76,6 +86,19 @@ export interface RoundStatus {
   submitted: string[];
   /** GM 正在回應的回合；沒有則為 null */
   gmRound: number | null;
+  paused: boolean;
+}
+
+/** 只送給主持人的控場資訊 */
+export interface HostStatus {
+  /** 等著併入下一回合的主持人指示 */
+  notes: string[];
+  /** SDK 估算的 session 累計花費（美元） */
+  totalCostUsd: number;
+  sessionId: string | null;
+  model: string;
+  effort: string;
+  mock: boolean;
 }
 
 export type ServerMessage =
@@ -95,4 +118,5 @@ export type ServerMessage =
   | { type: "round_status"; round: RoundStatus }
   | { type: "your_action"; action: MyAction | null }
   | { type: "gm_delta"; round: number; text: string }
+  | { type: "host_status"; status: HostStatus }
   | { type: "error"; code: string; message: string };

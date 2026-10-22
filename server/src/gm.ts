@@ -78,6 +78,7 @@ const SYSTEM_APPEND = `
 - 不要提到檔案、工具、伺服器或你是 AI。
 - 需要隨機判定時一律用 roll_dice 工具，擲骰結果玩家會直接看到，敘事裡不必重複數字細節。
 - 標示為【私密】的行動只有你和該玩家知道：它的結果用 send_private 私下告訴那位玩家，公開敘事裡不能透露。
+- 【主持人指示】來自真人主持人，玩家看不到：照著安排劇情，但不要在敘事中提到或引用它。
 `.trim();
 
 export class AgentGm implements Gm {
@@ -183,7 +184,12 @@ export class MockGm implements Gm {
     if (!sessionId) callbacks.onSessionId(id);
 
     const publicLines: string[] = [];
+    let notes = 0;
     for (const line of prompt.split("\n")) {
+      if (line.startsWith("【主持人指示】")) {
+        notes++;
+        continue;
+      }
       const secret = line.match(/^- 【私密】(.+?)：(.*)$/);
       if (secret) {
         runSendPrivate({ player: secret[1], text: `（模擬 GM）你的私密行動「${secret[2]}」沒有被任何人發現。` }, callbacks.tools);
@@ -193,11 +199,12 @@ export class MockGm implements Gm {
     }
     runRollDice({ notation: "1d20", reason: "模擬 GM 的測試擲骰" }, callbacks.tools);
 
-    const reply = `（模擬 GM）我收到了這些行動：\n${publicLines.join("\n")}\n\n四周一片寂靜……你們接下來要做什麼？`;
+    const noteLine = notes ? `\n（另外收到 ${notes} 條主持人指示）` : "";
+    const reply = `（模擬 GM）我收到了這些行動：\n${publicLines.join("\n")}${noteLine}\n\n四周一片寂靜……你們接下來要做什麼？`;
     let text = "";
     for (const ch of reply) {
       if (abort.signal.aborted) throw new GmError("aborted", { text, sessionId: id });
-      await new Promise((r) => setTimeout(r, 5));
+      await new Promise((r) => setTimeout(r, config.gm.mockDelayMs));
       text += ch;
       callbacks.onText(ch);
     }
