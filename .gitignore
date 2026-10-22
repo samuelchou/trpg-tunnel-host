@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log
+
+# 遊戲存檔與執行中的狀態（含玩家對話，不上傳）
+gm/saves/
