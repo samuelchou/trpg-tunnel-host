@@ -11,7 +11,9 @@
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "invite": "tsx scripts/invite.ts",
-    "adopt-session": "tsx scripts/adopt-session.ts"
+    "adopt-session": "tsx scripts/adopt-session.ts",
+    "tunnel:setup": "tsx scripts/tunnel-setup.ts",
+    "tunnel": "cloudflared tunnel --config ../tunnel/config.yml run"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.308",

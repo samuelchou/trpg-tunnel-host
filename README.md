@@ -21,7 +21,7 @@
 - [x] M2：接上 Agent SDK，回合結算 → GM 回應串流
 - [x] M3：擲骰、私密行動
 - [x] M4：host 控場面板
-- [ ] M5：Cloudflare Tunnel 設定
+- [x] M5：Cloudflare Tunnel 設定（見 [docs/cloudflare-tunnel.md](docs/cloudflare-tunnel.md)）
 
 ## 快速開始
 
@@ -37,6 +37,8 @@ npm run dev                       # 啟動伺服器（修改程式會自動重�
 ```
 
 打開邀請連結就能加入。連結裡的 token 只會顯示一次；同一個名字再執行一次 `invite` 會換發新 token，舊連結會立即失效。
+
+要讓朋友從外網連進來，照 [docs/cloudflare-tunnel.md](docs/cloudflare-tunnel.md) 設定 Cloudflare Tunnel，之後開團時另開一個終端機執行 `npm run tunnel`。
 
 想先試介面、不花 token 的話，用模擬 GM 啟動：
 
@@ -90,6 +92,7 @@ npm run adopt-session -- --new          # 清除，下一回合開新 session
 | `gm/` | host 放 GM 設定的地方：系統提示詞、世界觀、角色卡、劇情摘要 |
 | `server/` | host 伺服器（Node + TypeScript + `ws` + Claude Agent SDK） |
 | `client/` | HTML client，由伺服器直接提供 |
+| `tunnel/` | Cloudflare Tunnel 設定（`config.yml` 由 `npm run tunnel:setup` 產生，不進 git） |
 
 ## 待決定
 

@@ -1,0 +1,15 @@
+# Cloudflare Tunnel 設定範本。
+# 一般不用手動寫：執行 npm run tunnel:setup -- <主機名稱> 會自動產生 tunnel/config.yml。
+# 想手動設定的話，複製成 config.yml（不進 git）再填入。
+
+# cloudflared tunnel create 印出的 tunnel ID
+tunnel: 00000000-0000-0000-0000-000000000000
+# cloudflared tunnel create 產生的憑證檔（macOS 預設在 ~/.cloudflared/）
+credentials-file: /Users/<你的帳號>/.cloudflared/00000000-0000-0000-0000-000000000000.json
+
+ingress:
+  # 對外網址 → 本機伺服器（埠號要跟 .env 的 PORT 一樣）
+  - hostname: trpg.example.com
+    service: http://127.0.0.1:3000
+  # 其他主機名稱一律回 404
+  - service: http_status:404

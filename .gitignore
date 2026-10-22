@@ -8,3 +8,6 @@ dist/
 
 # 遊戲存檔與執行中的狀態（含玩家對話，不上傳）
 gm/saves/
+
+# Cloudflare Tunnel 設定（含 tunnel ID 與本機路徑）
+tunnel/config.yml
