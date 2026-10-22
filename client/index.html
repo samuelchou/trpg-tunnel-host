@@ -25,13 +25,14 @@
           <button id="resolve" type="button" class="ghost" hidden>立即結算</button>
         </div>
         <div id="my-action" class="my-action" hidden>
-          <span class="label">你本回合的行動</span>
+          <span id="my-action-label" class="label">你本回合的行動</span>
           <p id="my-action-text"></p>
           <button id="withdraw" type="button" class="ghost">撤回</button>
         </div>
         <form id="composer" class="composer">
           <div class="mode" role="radiogroup" aria-label="發言類型">
             <label><input type="radio" name="mode" value="action" checked /> 角色行動</label>
+            <label><input type="radio" name="mode" value="private" /> 私密行動</label>
             <label><input type="radio" name="mode" value="chat" /> 閒聊</label>
           </div>
           <div class="compose-row">

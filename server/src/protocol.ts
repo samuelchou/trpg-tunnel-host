@@ -10,8 +10,8 @@ export const ClientMessage = z.discriminatedUnion("type", [
   z.object({ type: z.literal("hello"), token: z.string().min(1).max(200) }),
   /** OOC 閒聊，不送 GM */
   z.object({ type: z.literal("chat"), text }),
-  /** 本回合的角色行動；再送一次會覆蓋 */
-  z.object({ type: z.literal("action"), text }),
+  /** 本回合的角色行動；再送一次會覆蓋。private 為 true 時只有 GM（與主持人）看得到 */
+  z.object({ type: z.literal("action"), text, private: z.boolean().optional() }),
   z.object({ type: z.literal("withdraw") }),
   /** host 限定：不等其他人，立即結算 */
   z.object({ type: z.literal("resolve_round") }),
@@ -28,15 +28,39 @@ export interface PlayerRef {
 interface EventMeta {
   id: string;
   ts: string;
+  /** 只有這些玩家（以及主持人）看得到；沒有則所有人都看得到 */
+  visibleTo?: string[];
+}
+
+export interface DiceTermView {
+  label: string;
+  rolls?: number[];
+  value: number;
 }
 
 export type GameEvent = EventMeta &
   (
     | { kind: "chat"; from: PlayerRef; text: string }
     | { kind: "system"; text: string }
-    | { kind: "action"; round: number; from: PlayerRef; text: string }
+    | { kind: "action"; round: number; from: PlayerRef; text: string; private?: boolean }
     | { kind: "gm"; round: number; text: string }
+    | {
+        kind: "dice";
+        round: number;
+        reason: string;
+        notation: string;
+        terms: DiceTermView[];
+        total: number;
+        /** 私密擲骰的對象 */
+        to?: PlayerRef;
+      }
+    | { kind: "private"; round: number; to: PlayerRef; text: string }
   );
+
+export interface MyAction {
+  text: string;
+  private: boolean;
+}
 
 // ---- server → client ----
 
@@ -62,13 +86,13 @@ export type ServerMessage =
       events: GameEvent[];
       round: RoundStatus;
       /** 你本回合已送出的行動 */
-      yourAction: string | null;
+      yourAction: MyAction | null;
       /** GM 回應到一半時重連，補上目前為止的文字 */
       gmPartial: string | null;
     }
   | { type: "presence"; players: PlayerPresence[] }
   | { type: "event"; event: GameEvent }
   | { type: "round_status"; round: RoundStatus }
-  | { type: "your_action"; text: string | null }
+  | { type: "your_action"; action: MyAction | null }
   | { type: "gm_delta"; round: number; text: string }
   | { type: "error"; code: string; message: string };

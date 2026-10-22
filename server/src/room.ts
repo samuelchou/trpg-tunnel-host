@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import type { WebSocket } from "ws";
 import { config } from "./config.js";
 import { GmError, type Gm } from "./gm.js";
+import type { ToolSink } from "./tools.js";
 import type {
   ClientMessage,
   GameEvent,
@@ -17,6 +18,7 @@ import {
   loadState,
   saveState,
   type PlayerRecord,
+  type Role,
 } from "./store.js";
 
 type DistributiveOmit<T, K extends keyof any> = T extends unknown ? Omit<T, K> : never;
@@ -24,11 +26,14 @@ type DistributiveOmit<T, K extends keyof any> = T extends unknown ? Omit<T, K> :
 interface PendingAction {
   from: PlayerRef;
   text: string;
+  private: boolean;
 }
 
 /** 一個伺服器 = 一場團。同一位玩家可以開多個分頁，所以每人對應一組連線 */
 export class Room {
   private connections = new Map<string, Set<WebSocket>>();
+  /** 在線玩家的身分，用來判斷誰看得到私密事件 */
+  private roles = new Map<string, Role>();
   private recent: GameEvent[] = loadRecentEvents(config.historyLimit);
   private state = loadState();
 
@@ -48,14 +53,15 @@ export class Room {
     let set = this.connections.get(player.id);
     if (!set) this.connections.set(player.id, (set = new Set()));
     set.add(ws);
+    this.roles.set(player.id, player.role);
 
     this.send(ws, {
       type: "snapshot",
       you: { id: player.id, name: player.name, role: player.role },
       players: this.presence(),
-      events: this.recent,
+      events: this.recent.filter((e) => this.canSee(player.id, e)),
       round: this.roundStatus(),
-      yourAction: this.pending.get(player.id)?.text ?? null,
+      yourAction: this.myAction(player.id),
       gmPartial: this.gmRound !== null ? this.gmPartial : null,
     });
     if (firstConnection) this.broadcast({ type: "presence", players: this.presence() });
@@ -67,6 +73,7 @@ export class Room {
     set.delete(ws);
     if (set.size === 0) {
       this.connections.delete(player.id);
+      this.roles.delete(player.id);
       this.broadcast({ type: "presence", players: this.presence() });
       // 剩下的人可能都已經行動了
       this.maybeAutoResolve();
@@ -81,9 +88,9 @@ export class Room {
         break;
 
       case "action":
-        this.pending.set(player.id, { from: ref, text: msg.text });
+        this.pending.set(player.id, { from: ref, text: msg.text, private: msg.private ?? false });
         this.autoResolveBlocked = false;
-        this.sendTo(player.id, { type: "your_action", text: msg.text });
+        this.sendTo(player.id, { type: "your_action", action: this.myAction(player.id) });
         this.broadcastRound();
         this.maybeAutoResolve();
         break;
@@ -91,7 +98,7 @@ export class Room {
       case "withdraw":
         if (!this.pending.delete(player.id)) return;
         this.autoResolveBlocked = false;
-        this.sendTo(player.id, { type: "your_action", text: null });
+        this.sendTo(player.id, { type: "your_action", action: null });
         this.broadcastRound();
         break;
 
@@ -122,8 +129,14 @@ export class Room {
     const actions = [...this.pending.values()];
     this.pending.clear();
     for (const a of actions) {
-      this.sendTo(a.from.id, { type: "your_action", text: null });
-      this.record({ kind: "action", round, from: a.from, text: a.text });
+      this.sendTo(a.from.id, { type: "your_action", action: null });
+      this.record({
+        kind: "action",
+        round,
+        from: a.from,
+        text: a.text,
+        ...(a.private && { private: true, visibleTo: [a.from.id] }),
+      });
     }
 
     this.state.round = round + 1;
@@ -133,7 +146,10 @@ export class Room {
     this.gmAbort = new AbortController();
     this.broadcastRound();
 
-    const prompt = [`【回合 ${round}】`, ...actions.map((a) => `- ${a.from.name}：${a.text}`)].join("\n");
+    const prompt = [
+      `【回合 ${round}】`,
+      ...actions.map((a) => `- ${a.private ? "【私密】" : ""}${a.from.name}：${a.text}`),
+    ].join("\n");
 
     this.gm
       .run(
@@ -148,6 +164,7 @@ export class Room {
             this.state.sessionId = sessionId;
             saveState(this.state);
           },
+          tools: this.toolSink(round),
         },
         this.gmAbort,
       )
@@ -168,7 +185,7 @@ export class Room {
         for (const a of actions) {
           if (!this.pending.has(a.from.id)) {
             this.pending.set(a.from.id, a);
-            this.sendTo(a.from.id, { type: "your_action", text: a.text });
+            this.sendTo(a.from.id, { type: "your_action", action: this.myAction(a.from.id) });
           }
         }
         this.state.round = round;
@@ -185,6 +202,48 @@ export class Room {
       });
   }
 
+  /** GM 工具在這一回合產生的擲骰與私訊 */
+  private toolSink(round: number): ToolSink {
+    const findPlayer = (name: string) => loadPlayers().find((p) => p.name === name);
+    return {
+      playerNames: () => loadPlayers().map((p) => p.name),
+      onDice: (roll, reason, playerName) => {
+        const target = playerName ? findPlayer(playerName) : undefined;
+        this.record({
+          kind: "dice",
+          round,
+          reason,
+          notation: roll.notation,
+          terms: roll.terms.map(({ label, rolls, value }) => ({ label, rolls, value })),
+          total: roll.total,
+          ...(target && { to: { id: target.id, name: target.name }, visibleTo: [target.id] }),
+        });
+      },
+      onPrivate: (playerName, text) => {
+        const target = findPlayer(playerName);
+        if (!target) return false;
+        this.record({
+          kind: "private",
+          round,
+          to: { id: target.id, name: target.name },
+          text,
+          visibleTo: [target.id],
+        });
+        return true;
+      },
+    };
+  }
+
+  private myAction(playerId: string) {
+    const a = this.pending.get(playerId);
+    return a ? { text: a.text, private: a.private } : null;
+  }
+
+  /** 主持人看得到所有私密事件 */
+  private canSee(playerId: string, event: GameEvent) {
+    return !event.visibleTo || event.visibleTo.includes(playerId) || this.roles.get(playerId) === "host";
+  }
+
   private updateCost(sessionCostUsd: number | undefined) {
     if (sessionCostUsd === undefined) return;
     this.state.totalCostUsd = Math.max(this.state.totalCostUsd, sessionCostUsd);
@@ -196,7 +255,11 @@ export class Room {
     appendEvent(event);
     this.recent.push(event);
     if (this.recent.length > config.historyLimit) this.recent.shift();
-    this.broadcast({ type: "event", event });
+    const data = JSON.stringify({ type: "event", event } satisfies ServerMessage);
+    for (const [playerId, set] of this.connections) {
+      if (!this.canSee(playerId, event)) continue;
+      for (const ws of set) if (ws.readyState === ws.OPEN) ws.send(data);
+    }
   }
 
   private roundStatus(): RoundStatus {

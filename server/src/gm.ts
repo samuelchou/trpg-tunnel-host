@@ -1,12 +1,15 @@
 import path from "node:path";
 import { query, type HookCallback } from "@anthropic-ai/claude-agent-sdk";
 import { config } from "./config.js";
+import { createToolServer, runRollDice, runSendPrivate, TOOL_NAMES, TOOL_SERVER_NAME, type ToolSink } from "./tools.js";
 
 export interface GmCallbacks {
   /** GM 敘事的文字增量 */
   onText(delta: string): void;
   /** 拿到 session ID 時呼叫（新 session 會在第一則訊息就拿到，可以先存起來） */
   onSessionId(sessionId: string): void;
+  /** roll_dice / send_private 工具的結果要送到哪裡 */
+  tools: ToolSink;
 }
 
 export interface GmResult {
@@ -39,7 +42,8 @@ function inside(file: string, dir: string) {
 
 /**
  * 第二層防護（第一層是 tools 白名單與 gm/.claude/settings.json 的權限規則）：
- * 只准讀 gm/ 底下（saves/ 除外），只准寫 characters/ 與 story/，其他工具一律拒絕。
+ * 只准讀 gm/ 底下（saves/ 除外），只准寫 characters/ 與 story/；
+ * 除了伺服器提供的 TRPG 工具，其他工具一律拒絕。
  */
 export const guardTools: HookCallback = async (input) => {
   if (input.hook_event_name !== "PreToolUse") return {};
@@ -51,6 +55,7 @@ export const guardTools: HookCallback = async (input) => {
     },
   });
 
+  if (TOOL_NAMES.includes(input.tool_name)) return {};
   if (!FILE_TOOLS.includes(input.tool_name)) return deny(`GM 不能使用 ${input.tool_name}`);
 
   const toolInput = (input.tool_input ?? {}) as { file_path?: string; path?: string };
@@ -71,6 +76,8 @@ const SYSTEM_APPEND = `
 你輸出的所有文字都會即時廣播給全體玩家，所以：
 - 只輸出給玩家看的敘事；需要讀寫檔案時，直接使用工具，前後不要輸出任何說明文字。
 - 不要提到檔案、工具、伺服器或你是 AI。
+- 需要隨機判定時一律用 roll_dice 工具，擲骰結果玩家會直接看到，敘事裡不必重複數字細節。
+- 標示為【私密】的行動只有你和該玩家知道：它的結果用 send_private 私下告訴那位玩家，公開敘事裡不能透露。
 `.trim();
 
 export class AgentGm implements Gm {
@@ -99,7 +106,8 @@ export class AgentGm implements Gm {
         systemPrompt: { type: "preset", preset: "claude_code", append: SYSTEM_APPEND },
         tools: FILE_TOOLS,
         disallowedTools: ["Bash", "WebFetch", "WebSearch"],
-        allowedTools: ["Edit(characters/**)", "Edit(story/**)"],
+        allowedTools: ["Edit(characters/**)", "Edit(story/**)", ...TOOL_NAMES],
+        mcpServers: { [TOOL_SERVER_NAME]: createToolServer(callbacks.tools) },
         permissionMode: "dontAsk",
         hooks: { PreToolUse: [{ hooks: [guardTools] }] },
         model: config.gm.model,
@@ -160,7 +168,10 @@ export class GmError extends Error {
   }
 }
 
-/** 不呼叫 Claude 的假 GM：把收到的回合逐字吐回來，用來開發 UI 和測試回合流程 */
+/**
+ * 不呼叫 Claude 的假 GM，用來開發 UI 和測試回合流程：
+ * 公開行動逐字吐回來並擲一顆 d20，私密行動用 send_private 私下回覆。
+ */
 export class MockGm implements Gm {
   async run(
     prompt: string,
@@ -170,7 +181,19 @@ export class MockGm implements Gm {
   ): Promise<GmResult> {
     const id = sessionId ?? "mock-session";
     if (!sessionId) callbacks.onSessionId(id);
-    const reply = `（模擬 GM）我收到了這些行動：\n${prompt}\n\n四周一片寂靜……你們接下來要做什麼？`;
+
+    const publicLines: string[] = [];
+    for (const line of prompt.split("\n")) {
+      const secret = line.match(/^- 【私密】(.+?)：(.*)$/);
+      if (secret) {
+        runSendPrivate({ player: secret[1], text: `（模擬 GM）你的私密行動「${secret[2]}」沒有被任何人發現。` }, callbacks.tools);
+      } else {
+        publicLines.push(line);
+      }
+    }
+    runRollDice({ notation: "1d20", reason: "模擬 GM 的測試擲骰" }, callbacks.tools);
+
+    const reply = `（模擬 GM）我收到了這些行動：\n${publicLines.join("\n")}\n\n四周一片寂靜……你們接下來要做什麼？`;
     let text = "";
     for (const ch of reply) {
       if (abort.signal.aborted) throw new GmError("aborted", { text, sessionId: id });

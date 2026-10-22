@@ -10,6 +10,7 @@ const inputEl = $("input");
 
 const PLACEHOLDER = {
   action: "描述你的角色這回合要做什麼（Enter 送出，Shift+Enter 換行）",
+  private: "只有 GM 看得到的行動，例如偷偷做某件事（Enter 送出，Shift+Enter 換行）",
   chat: "跟大家閒聊，GM 看不到（Enter 送出，Shift+Enter 換行）",
 };
 
@@ -88,7 +89,7 @@ function connect(token) {
         renderRound();
         break;
       case "your_action":
-        renderMyAction(msg.text);
+        renderMyAction(msg.action);
         break;
       case "gm_delta":
         withAutoScroll(() => appendGmDelta(msg.round, msg.text));
@@ -99,6 +100,9 @@ function connect(token) {
             // 串流結束，換成正式事件
             streaming.el.replaceWith(renderEvent(msg.event));
             streaming = null;
+          } else if (streaming) {
+            // GM 敘事進行中產生的擲骰、私訊，放在敘事前面
+            logEl.insertBefore(renderEvent(msg.event), streaming.el);
           } else {
             logEl.append(renderEvent(msg.event));
           }
@@ -154,9 +158,32 @@ function renderEvent(event) {
       break;
     case "action":
       if (event.from.id === me?.id) li.classList.add("mine");
+      if (event.private) li.classList.add("private");
+      li.append(el("span", "tag", `回合 ${event.round}`));
+      if (event.private) li.append(el("span", "tag tag-private", "私密"));
+      li.append(el("span", "who", event.from.name), el("p", "text", event.text));
+      break;
+    case "dice": {
+      if (event.to) li.classList.add("private");
+      const detail = event.terms
+        .map((t, i) => {
+          const op = t.value < 0 || t.label.startsWith("-") ? "-" : i === 0 ? "" : "+";
+          return op + (t.rolls ? `[${t.rolls.join(",")}]` : String(Math.abs(t.value)));
+        })
+        .join("");
       li.append(
-        el("span", "tag", `回合 ${event.round}`),
-        el("span", "who", event.from.name),
+        el("span", "dice-icon", "🎲"),
+        el("span", "reason", event.reason),
+        el("span", "detail", `${event.notation} → ${detail} =`),
+        el("strong", "total", String(event.total)),
+      );
+      if (event.to) li.append(el("span", "tag tag-private", event.to.id === me?.id ? "只有你看得到" : `私密：${event.to.name}`));
+      break;
+    }
+    case "private":
+      li.append(
+        el("span", "who", event.to.id === me?.id ? "GM 私下告訴你" : `GM 私下告訴 ${event.to.name}`),
+        timeEl(event.ts),
         el("p", "text", event.text),
       );
       break;
@@ -207,9 +234,11 @@ function renderRound() {
   $("resolve").disabled = round.gmRound !== null || round.submitted.length === 0;
 }
 
-function renderMyAction(text) {
-  $("my-action").hidden = text === null;
-  $("my-action-text").textContent = text ?? "";
+function renderMyAction(action) {
+  $("my-action").hidden = action === null;
+  $("my-action").classList.toggle("private", !!action?.private);
+  $("my-action-label").textContent = action?.private ? "你本回合的私密行動（只有 GM 看得到）" : "你本回合的行動";
+  $("my-action-text").textContent = action?.text ?? "";
 }
 
 function scrollToBottom() {
@@ -228,7 +257,8 @@ $("composer").addEventListener("submit", (e) => {
   e.preventDefault();
   const text = inputEl.value.trim();
   if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
-  send({ type: currentMode(), text });
+  const mode = currentMode();
+  send(mode === "chat" ? { type: "chat", text } : { type: "action", text, private: mode === "private" });
   inputEl.value = "";
 });
 
@@ -248,6 +278,14 @@ inputEl.addEventListener("keydown", (e) => {
 
 $("withdraw").addEventListener("click", () => send({ type: "withdraw" }));
 $("resolve").addEventListener("click", () => send({ type: "resolve_round" }));
+
+// 在已開啟的分頁貼上另一條邀請連結時，只有 hash 會變，頁面不會重新載入
+window.addEventListener("hashchange", () => {
+  if (/[#&]t=/.test(location.hash)) {
+    readToken();
+    location.reload();
+  }
+});
 
 const token = readToken();
 if (token) {

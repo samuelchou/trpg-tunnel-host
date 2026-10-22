@@ -10,6 +10,8 @@
   --ok: #2f7d4f;
   --warn: #b26b00;
   --bad: #b3372f;
+  --secret: #6a4fa3;
+  --secret-bg: #efe9f8;
   color-scheme: light;
 }
 
@@ -26,6 +28,8 @@
     --ok: #5fbf83;
     --warn: #e0a040;
     --bad: #e2675d;
+    --secret: #a98be0;
+    --secret-bg: #251f33;
     color-scheme: dark;
   }
 }
@@ -176,6 +180,65 @@ body {
 }
 
 .event-action .text {
+  margin: 2px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.event-action.private,
+.event-dice.private,
+.my-action.private {
+  border-left-color: var(--secret);
+  background: var(--secret-bg);
+}
+
+.tag-private {
+  background: var(--secret);
+  color: var(--accent-text);
+}
+
+.event-dice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+  max-width: 720px;
+  padding: 6px 12px;
+  border-left: 3px solid var(--border);
+  border-radius: 0 8px 8px 0;
+  background: var(--panel);
+  font-size: 0.9rem;
+}
+
+.event-dice .reason {
+  font-weight: 600;
+}
+
+.event-dice .detail {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.event-dice .total {
+  font-size: 1.15rem;
+  color: var(--accent);
+}
+
+.event-private {
+  max-width: 720px;
+  padding: 8px 12px;
+  border: 1px dashed var(--secret);
+  border-radius: 8px;
+  background: var(--secret-bg);
+}
+
+.event-private .who {
+  font-weight: 600;
+  color: var(--secret);
+  margin-right: 8px;
+}
+
+.event-private .text {
   margin: 2px 0 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
